@@ -66,7 +66,8 @@ The deployed serverless demo has one web Lambda container plus one model Lambda
 container:
 
 - `pitch-sequence-serverless-web`: Next.js web/API app through Lambda Web Adapter
-- `pitch-sequence-model-lambda`: Python model inference Lambda container
+- `pitch-sequence-serverless-model-lambda`: Python model inference Lambda
+  container owned by `PitchSequenceModelStack`
 
 The web app calls the model service server-side using either `MODEL_BASE_URL`
 and `MODEL_API_KEY` in HTTP mode or `MODEL_LAMBDA_FUNCTION_NAME` in Lambda

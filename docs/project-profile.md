@@ -54,8 +54,8 @@ of truth for current implementation choices.
   mode
 - data access: explicit storage adapters for memory, DynamoDB, and PostgreSQL
 - cloud target: AWS CloudFront -> Lambda Web Adapter -> DynamoDB for the web/API
-  path; AWS Lambda container for model inference, Secrets Manager, ECR with
-  lifecycle retention, and CDK
+  path; dedicated AWS Lambda container stack for model inference; Secrets
+  Manager, ECR with lifecycle retention, and CDK
 - background work: none in v1; add jobs or workflow runtime only when required
 - authorization: signed anonymous workspace session boundary
 - testing: Vitest, Playwright, API/domain tests, and integration checks where useful
@@ -114,8 +114,8 @@ record it here briefly and add an ADR under `docs/adr/`.
 
 - AWS is the cloud provider for the first deployed version.
 - The pitch model is a separate model boundary. The deployed demo invokes the
-  model through AWS Lambda using server-side IAM permissions; local development
-  can still use the HTTP FastAPI service.
+  serverless-native model Lambda through server-side IAM permissions; local
+  development can still use the HTTP FastAPI service.
 - Public MLB data powers real game replay.
 - The deployed app uses anonymous workspace sessions, not a password gate or
   individual user accounts.
@@ -144,7 +144,7 @@ record it here briefly and add an ADR under `docs/adr/`.
 | MLB Stats API | real game schedule and pitch feed | public game and pitch data | read/cache only | MLB |
 | Pitch model service | next-pitch prediction | typed pitch moment request | read/predict only | model service owner |
 | AWS CloudFront | web entry point | browser HTTP requests | routes to Lambda Function URL | project |
-| AWS Lambda | model inference and serverless web hosting | web/model containers and prediction requests | serves web app and invokes model runtime | project |
+| AWS Lambda | model inference and serverless web hosting | web/model containers and prediction requests | serves web app and invokes model runtime through `PitchSequenceServerlessStack` and `PitchSequenceModelStack` | project |
 | AWS DynamoDB | serverless app state | games, timelines, predictions, audit events | pay-per-request data writes | project |
 | PostgreSQL durable mode | optional durable app data store | games, timelines, predictions, audit events | database writes when enabled | project |
 | AWS Secrets Manager | runtime secrets | session/model/db secrets | secret reads | project |

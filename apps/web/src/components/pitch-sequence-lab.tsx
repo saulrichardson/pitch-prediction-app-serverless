@@ -19,6 +19,7 @@ import { getJson, postJson } from "./pitch-sequence-lab/api";
 import { cap, formatGameDate, scoreLine } from "./pitch-sequence-lab/formatters";
 import { IntroScreen } from "./pitch-sequence-lab/intro-screen";
 import { MatchupBanner } from "./pitch-sequence-lab/matchup-banner";
+import { classifyTimelineJobPollError } from "./pitch-sequence-lab/polling";
 import { PredictionPanel } from "./pitch-sequence-lab/prediction-panel";
 import { ReadPanel } from "./pitch-sequence-lab/read-panel";
 import { MiniBases, StatePill, lastCompletedReveal } from "./pitch-sequence-lab/state-summary";
@@ -54,11 +55,13 @@ export default function PitchPredictionApp() {
 
     let cancelled = false;
     let timer: number | undefined;
+    let consecutiveServerFailures = 0;
 
     const poll = async () => {
       try {
         const result = await getJson<{ job: ClientTimelineStartJob; timeline?: ClientTimeline }>(`/api/timeline-jobs/${waitingJobId}`);
         if (cancelled) return;
+        consecutiveServerFailures = 0;
 
         if (result.job.status === "succeeded" && result.timeline) {
           setState({ status: "ready", timeline: result.timeline, game: waitingGame });
@@ -74,12 +77,18 @@ export default function PitchPredictionApp() {
           ? { ...current, job: result.job, message: timelineJobMessage(result.job) }
           : current);
         timer = window.setTimeout(poll, 2000);
-      } catch {
+      } catch (error) {
         if (cancelled) return;
+        const decision = classifyTimelineJobPollError(error, consecutiveServerFailures);
+        consecutiveServerFailures = decision.consecutiveServerFailures;
+        if (decision.terminal) {
+          setState({ status: "error", message: decision.message });
+          return;
+        }
         setState((current) => current.status === "waiting"
-          ? { ...current, message: "Still preparing the real model. This can take a minute after a cold start." }
+          ? { ...current, message: decision.message }
           : current);
-        timer = window.setTimeout(poll, 3000);
+        timer = window.setTimeout(poll, decision.retryDelayMs);
       }
     };
 

@@ -16,7 +16,7 @@ export class PitchSequenceServerlessStack extends cdk.Stack {
 
     const repositoryName = process.env.ECR_REPOSITORY_NAME ?? "pitch-prediction-app";
     const webImageTag = process.env.SERVERLESS_WEB_IMAGE_TAG ?? process.env.IMAGE_TAG ?? "serverless-latest";
-    const modelFunctionName = process.env.MODEL_LAMBDA_FUNCTION_NAME ?? "pitch-sequence-model-lambda";
+    const modelFunctionName = process.env.MODEL_LAMBDA_FUNCTION_NAME ?? "pitch-sequence-serverless-model-lambda";
     const modelInvokeTarget = process.env.MODEL_LAMBDA_INVOKE_TARGET ?? `${modelFunctionName}:live`;
     const webMemoryMb = Number(process.env.SERVERLESS_WEB_MEMORY_MB ?? "2048");
     const webTimeoutSeconds = Number(process.env.SERVERLESS_WEB_TIMEOUT_SECONDS ?? "300");

@@ -53,7 +53,7 @@ The model service predicts. The web app decides state transitions.
 | Domain model | `packages/domain/src/` | Own baseball state, prediction request construction, timeline transitions, and evaluation logic |
 | Model service boundary | `apps/web/src/lib/model-service.ts`, `services/model-api/` | Call the real pitch model server-side through HTTP or Lambda and reject unavailable or malformed responses |
 | Persistence | `packages/db/src/` | Store games, timelines, prediction runs, and audit events through explicit memory, DynamoDB, or PostgreSQL storage modes |
-| Infrastructure | `infra/`, `Dockerfile.web-lambda`, service Dockerfiles | Reproduce serverless web hosting, Lambda model inference, DynamoDB, Secrets Manager, ECR, and container deployment |
+| Infrastructure | `infra/`, `Dockerfile.web-lambda`, service Dockerfiles | Reproduce serverless web hosting, dedicated model Lambda ownership, DynamoDB, Secrets Manager, ECR, and container deployment |
 
 ## Current Domain Objects
 

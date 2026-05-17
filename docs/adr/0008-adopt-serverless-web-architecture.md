@@ -13,7 +13,7 @@ a reliable place for replay timelines across user clicks.
 
 ## Decision
 
-Use one AWS serverless stack:
+Use AWS serverless stacks for the public demo:
 
 - CloudFront distribution as the public entry point
 - Next.js standalone server running as an AWS Lambda container through AWS
@@ -22,9 +22,10 @@ Use one AWS serverless stack:
   CloudFront for the published URL
 - DynamoDB pay-per-request table for game replay, timeline, prediction, and
   audit state
-- existing PitchPredict model Lambda invoked server-side through IAM
+- PitchPredict model Lambda invoked server-side through IAM
 - Secrets Manager-generated session secret injected into the web Lambda
 - CDK stack name `PitchSequenceServerlessStack`
+- CDK stack name `PitchSequenceModelStack` for the model runtime
 
 ## Rationale
 
@@ -61,6 +62,10 @@ or move to an OpenNext/S3 split with private origins.
 DynamoDB is now a supported storage mode for serverless deployments. PostgreSQL
 support remains in the codebase for SQL-backed durable mode, but it is not the
 default for the low-cost demo path.
+
+ADR 0012 supersedes the original "existing model Lambda" ownership detail. The
+model runtime remains a separate Lambda boundary, but it is now owned by a
+serverless-native model stack instead of the old App Runner-era stack.
 
 ## Verification
 

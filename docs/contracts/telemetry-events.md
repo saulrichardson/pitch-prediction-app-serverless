@@ -23,6 +23,12 @@ Carry these IDs when relevant:
 | `timeline.revealed` | audit | workspace id, timeline id, pitch index, evaluation label | raw model key | record actual reveal |
 | `timeline.advanced` | audit | workspace id, timeline id, next pitch index | secrets | record actual timeline advance |
 | `timeline.stepped_back` | audit | workspace id, timeline id, pitch index, revealed state | secrets | record replay back-step |
+| `timeline_start_job.created` | audit | workspace id, job id, gamePk | secrets, worker lease token | record durable replay-start request |
+| `timeline_start_job.dispatch_failed` | audit | workspace id, job id, gamePk, stable error code | secrets, worker lease token | explain failure before worker claim |
+| `timeline_start_job.running` | audit | workspace id, job id, gamePk, attempt count | secrets, worker lease token | record worker claim for model preparation |
+| `timeline_start_job.redispatched` | audit | workspace id, job id, gamePk, attempt count | secrets, worker lease token | record stale lease recovery request |
+| `timeline_start_job.succeeded` | audit | workspace id, timeline id, job id, gamePk | secrets, worker lease token | link async preparation to created timeline |
+| `timeline_start_job.failed` | audit | workspace id, job id, gamePk, stable error code | secrets, worker lease token | record terminal replay preparation failure |
 | `prediction_runs` row | persistence trace | prediction id, timeline id, pitch moment, model version, request, response | model API key, database URL | reconstruct model request/response used by a timeline |
 
 ## Rules

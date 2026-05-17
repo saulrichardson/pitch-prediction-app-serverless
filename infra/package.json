@@ -10,7 +10,8 @@
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "synth": "AWS_REGION=${AWS_REGION:-us-east-1} AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1} cdk synth",
-    "deploy": "AWS_REGION=${AWS_REGION:-us-east-1} AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1} cdk deploy PitchSequenceServerlessStack --require-approval never",
+    "deploy": "AWS_REGION=${AWS_REGION:-us-east-1} AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1} cdk deploy PitchSequenceModelStack PitchSequenceServerlessStack --require-approval never",
+    "deploy:model": "AWS_REGION=${AWS_REGION:-us-east-1} AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1} cdk deploy PitchSequenceModelStack --require-approval never",
     "deploy:serverless": "AWS_REGION=${AWS_REGION:-us-east-1} AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1} cdk deploy PitchSequenceServerlessStack --require-approval never"
   },
   "devDependencies": {

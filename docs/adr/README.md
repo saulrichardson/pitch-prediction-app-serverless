@@ -43,3 +43,5 @@ Use `docs/templates/adr.md` as the starting point.
 - `0011-adopt-async-timeline-start-jobs.md`: creates replay timelines through a
   durable async start job so public cold starts show a waiting state instead of
   timing out behind CloudFront.
+- `0012-adopt-serverless-model-stack.md`: gives the model Lambda its own
+  serverless-native stack so the old App Runner-era stack can be retired.

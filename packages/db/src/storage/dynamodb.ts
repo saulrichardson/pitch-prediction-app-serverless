@@ -11,7 +11,8 @@ import type {
 } from "@pitch/domain";
 import { getDynamoDbClient, getDynamoTableName } from "../client";
 import { memory } from "./memory";
-import type { Storage } from "./types";
+import { claimTimelineStartJobState, normalizeTimelineStartJob } from "./timeline-start-jobs";
+import type { Storage, TimelineStartJobClaim } from "./types";
 
 let dynamoDocumentClient: DynamoDBDocumentClient | null = null;
 
@@ -121,39 +122,87 @@ export class DynamoDbStorage implements Storage {
   }
 
   async saveTimelineStartJob(job: TimelineStartJob): Promise<TimelineStartJob> {
+    const normalized = normalizeTimelineStartJob(job);
     const { client, tableName } = dynamoRuntime();
     await client.send(new PutCommand({
       TableName: tableName,
-      Item: {
-        pk: timelineStartJobPk(job.id),
-        sk: "METADATA",
-        entityType: "timeline_start_job",
-        jobId: job.id,
-        workspaceId: job.workspaceId,
-        gamePk: job.gamePk,
-        status: job.status,
-        timelineId: job.timelineId,
-        payload: job,
-        expiresAt: ttlFromNow(2)
-      }
+      Item: timelineStartJobItem(normalized)
     }));
-    memory.timelineStartJobs.set(job.id, job);
-    return job;
+    memory.timelineStartJobs.set(normalized.id, normalized);
+    return normalized;
   }
 
   async getTimelineStartJob(id: string, workspaceId?: string): Promise<TimelineStartJob | null> {
-    const cached = memory.timelineStartJobs.get(id);
-    if (cached && (!workspaceId || cached.workspaceId === workspaceId)) return cached;
-
     const { client, tableName } = dynamoRuntime();
     const row = await client.send(new GetCommand({
       TableName: tableName,
-      Key: { pk: timelineStartJobPk(id), sk: "METADATA" }
+      Key: { pk: timelineStartJobPk(id), sk: "METADATA" },
+      ConsistentRead: true
     }));
-    const job = row.Item?.payload as TimelineStartJob | undefined;
+    const job = row.Item?.payload ? normalizeTimelineStartJob(row.Item.payload as TimelineStartJob) : undefined;
     if (!job || (workspaceId && job.workspaceId !== workspaceId)) return null;
     memory.timelineStartJobs.set(id, job);
     return job;
+  }
+
+  async claimTimelineStartJob(claim: TimelineStartJobClaim): Promise<TimelineStartJob | null> {
+    const existing = await this.getTimelineStartJob(claim.id);
+    if (!existing) return null;
+    const claimed = claimTimelineStartJobState(existing, claim);
+    if (!claimed) return null;
+
+    const { client, tableName } = dynamoRuntime();
+    try {
+      await client.send(new PutCommand({
+        TableName: tableName,
+        Item: timelineStartJobItem(claimed),
+        ConditionExpression: "#status = :pending OR (#status = :running AND (#leaseExpiresAt <= :now OR (attribute_not_exists(#leaseExpiresAt) AND (#updatedAt <= :legacyRunningUpdatedBefore OR #payload.#updatedAt <= :legacyRunningUpdatedBefore))))",
+        ExpressionAttributeNames: {
+          "#status": "status",
+          "#leaseExpiresAt": "leaseExpiresAt",
+          "#updatedAt": "updatedAt",
+          "#payload": "payload"
+        },
+        ExpressionAttributeValues: {
+          ":pending": "pending",
+          ":running": "running",
+          ":now": claim.now,
+          ":legacyRunningUpdatedBefore": claim.legacyRunningUpdatedBefore
+        }
+      }));
+    } catch (error) {
+      if (isConditionalCheckFailure(error)) return null;
+      throw error;
+    }
+
+    memory.timelineStartJobs.set(claimed.id, claimed);
+    return claimed;
+  }
+
+  async updateClaimedTimelineStartJob(job: TimelineStartJob, leaseToken: string): Promise<TimelineStartJob | null> {
+    const normalized = normalizeTimelineStartJob(job);
+    const { client, tableName } = dynamoRuntime();
+    try {
+      await client.send(new PutCommand({
+        TableName: tableName,
+        Item: timelineStartJobItem(normalized),
+        ConditionExpression: "#status = :running AND #leaseToken = :leaseToken",
+        ExpressionAttributeNames: {
+          "#status": "status",
+          "#leaseToken": "leaseToken"
+        },
+        ExpressionAttributeValues: {
+          ":running": "running",
+          ":leaseToken": leaseToken
+        }
+      }));
+    } catch (error) {
+      if (isConditionalCheckFailure(error)) return null;
+      throw error;
+    }
+
+    memory.timelineStartJobs.set(normalized.id, normalized);
+    return normalized;
   }
 
   async savePredictionRun(run: { timelineId: string; pitchMoment: number; request: PredictionRequest; response: PredictionResponse }): Promise<void> {
@@ -234,6 +283,28 @@ function timelineStartJobPk(jobId: string) {
   return `TIMELINE_START_JOB#${jobId}`;
 }
 
+function timelineStartJobItem(job: TimelineStartJob) {
+  return {
+    pk: timelineStartJobPk(job.id),
+    sk: "METADATA",
+    entityType: "timeline_start_job",
+    jobId: job.id,
+    workspaceId: job.workspaceId,
+    gamePk: job.gamePk,
+    status: job.status,
+    timelineId: job.timelineId,
+    attempts: job.attempts,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
+    ...(job.leaseToken ? { leaseToken: job.leaseToken } : {}),
+    ...(job.leaseExpiresAt ? { leaseExpiresAt: job.leaseExpiresAt } : {}),
+    payload: job,
+    expiresAt: ttlFromNow(2)
+  };
+}
+
 function auditPk(workspaceId?: string) {
   return `AUDIT#${workspaceId ?? "global"}`;
 }
@@ -268,4 +339,8 @@ async function batchWriteAll(client: DynamoDBDocumentClient, tableName: string, 
   if (pending.length > 0) {
     throw new Error(`DynamoDB did not process ${pending.length} replay pitch writes after retries.`);
   }
+}
+
+function isConditionalCheckFailure(error: unknown) {
+  return error instanceof Error && error.name === "ConditionalCheckFailedException";
 }

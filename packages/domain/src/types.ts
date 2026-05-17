@@ -225,10 +225,12 @@ export type TimelineStartJob = {
   timelineId: string | null;
   error: TimelineStartJobError | null;
   attempts: number;
+  leaseToken: string | null;
+  leaseExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
   startedAt: string | null;
   completedAt: string | null;
 };
 
-export type ClientTimelineStartJob = Omit<TimelineStartJob, "workspaceId">;
+export type ClientTimelineStartJob = Omit<TimelineStartJob, "workspaceId" | "leaseToken" | "leaseExpiresAt">;

@@ -12,7 +12,8 @@ import type {
 import { auditEvents, games, pitchEvents, plateAppearances, players, predictionRuns, timelineStartJobs, timelines } from "../schema";
 import { getReadyDb } from "../client";
 import { memory, MemoryStorage } from "./memory";
-import type { Storage } from "./types";
+import { claimTimelineStartJobState, normalizeTimelineStartJob } from "./timeline-start-jobs";
+import type { Storage, TimelineStartJobClaim } from "./types";
 
 export class PostgresStorage implements Storage {
   async saveReplay(replay: GameReplay, raw?: unknown): Promise<GameReplay> {
@@ -119,41 +120,92 @@ export class PostgresStorage implements Storage {
   }
 
   async saveTimelineStartJob(job: TimelineStartJob): Promise<TimelineStartJob> {
+    const normalized = normalizeTimelineStartJob(job);
     const db = await getReadyDb();
-    if (!db) return new MemoryStorage().saveTimelineStartJob(job);
+    if (!db) return new MemoryStorage().saveTimelineStartJob(normalized);
     await db
       .insert(timelineStartJobs)
       .values({
-        id: job.id,
-        workspaceId: job.workspaceId,
-        gamePk: job.gamePk,
-        status: job.status,
-        timelineId: job.timelineId,
-        payload: job as never
+        id: normalized.id,
+        workspaceId: normalized.workspaceId,
+        gamePk: normalized.gamePk,
+        status: normalized.status,
+        timelineId: normalized.timelineId,
+        leaseToken: normalized.leaseToken,
+        leaseExpiresAt: normalized.leaseExpiresAt ? new Date(normalized.leaseExpiresAt) : null,
+        payload: normalized as never
       })
       .onConflictDoUpdate({
         target: timelineStartJobs.id,
         set: {
-          status: job.status,
-          timelineId: job.timelineId,
-          payload: job as never,
+          status: normalized.status,
+          timelineId: normalized.timelineId,
+          leaseToken: normalized.leaseToken,
+          leaseExpiresAt: normalized.leaseExpiresAt ? new Date(normalized.leaseExpiresAt) : null,
+          payload: normalized as never,
           updatedAt: new Date()
         }
       });
-    memory.timelineStartJobs.set(job.id, job);
-    return job;
+    memory.timelineStartJobs.set(normalized.id, normalized);
+    return normalized;
   }
 
   async getTimelineStartJob(id: string, workspaceId?: string): Promise<TimelineStartJob | null> {
-    const cached = memory.timelineStartJobs.get(id);
-    if (cached && (!workspaceId || cached.workspaceId === workspaceId)) return cached;
     const db = await getReadyDb();
-    if (!db) return null;
+    if (!db) return new MemoryStorage().getTimelineStartJob(id, workspaceId);
     const rows = await db.select().from(timelineStartJobs).where(eq(timelineStartJobs.id, id)).limit(1);
-    const job = rows[0]?.payload as TimelineStartJob | undefined;
+    const job = rows[0]?.payload ? normalizeTimelineStartJob(rows[0].payload as TimelineStartJob) : undefined;
     if (!job || (workspaceId && job.workspaceId !== workspaceId)) return null;
     memory.timelineStartJobs.set(id, job);
     return job;
+  }
+
+  async claimTimelineStartJob(claim: TimelineStartJobClaim): Promise<TimelineStartJob | null> {
+    const existing = await this.getTimelineStartJob(claim.id);
+    if (!existing) return null;
+    const claimed = claimTimelineStartJobState(existing, claim);
+    if (!claimed) return null;
+
+    const db = await getReadyDb();
+    if (!db) return new MemoryStorage().claimTimelineStartJob(claim);
+    const rows = await db
+      .update(timelineStartJobs)
+      .set({
+        status: claimed.status,
+        timelineId: claimed.timelineId,
+        leaseToken: claimed.leaseToken,
+        leaseExpiresAt: new Date(claimed.leaseExpiresAt ?? claim.leaseExpiresAt),
+        payload: claimed as never,
+        updatedAt: new Date(claim.now)
+      })
+      .where(sql`${timelineStartJobs.id} = ${claim.id} AND (${timelineStartJobs.status} = 'pending' OR (${timelineStartJobs.status} = 'running' AND (${timelineStartJobs.leaseExpiresAt} <= ${new Date(claim.now)} OR (${timelineStartJobs.leaseExpiresAt} IS NULL AND ${timelineStartJobs.updatedAt} <= ${new Date(claim.legacyRunningUpdatedBefore)}))))`)
+      .returning();
+
+    const job = rows[0]?.payload ? normalizeTimelineStartJob(rows[0].payload as TimelineStartJob) : null;
+    if (job) memory.timelineStartJobs.set(job.id, job);
+    return job;
+  }
+
+  async updateClaimedTimelineStartJob(job: TimelineStartJob, leaseToken: string): Promise<TimelineStartJob | null> {
+    const normalized = normalizeTimelineStartJob(job);
+    const db = await getReadyDb();
+    if (!db) return new MemoryStorage().updateClaimedTimelineStartJob(normalized, leaseToken);
+    const rows = await db
+      .update(timelineStartJobs)
+      .set({
+        status: normalized.status,
+        timelineId: normalized.timelineId,
+        leaseToken: normalized.leaseToken,
+        leaseExpiresAt: normalized.leaseExpiresAt ? new Date(normalized.leaseExpiresAt) : null,
+        payload: normalized as never,
+        updatedAt: new Date(normalized.updatedAt)
+      })
+      .where(sql`${timelineStartJobs.id} = ${normalized.id} AND ${timelineStartJobs.status} = 'running' AND ${timelineStartJobs.leaseToken} = ${leaseToken}`)
+      .returning();
+
+    const saved = rows[0]?.payload ? normalizeTimelineStartJob(rows[0].payload as TimelineStartJob) : null;
+    if (saved) memory.timelineStartJobs.set(saved.id, saved);
+    return saved;
   }
 
   async savePredictionRun(run: { timelineId: string; pitchMoment: number; request: PredictionRequest; response: PredictionResponse }): Promise<void> {

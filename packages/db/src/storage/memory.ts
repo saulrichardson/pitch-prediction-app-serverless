@@ -5,7 +5,8 @@ import type {
   Timeline,
   TimelineStartJob
 } from "@pitch/domain";
-import type { Storage } from "./types";
+import { claimTimelineStartJobState, normalizeTimelineStartJob } from "./timeline-start-jobs";
+import type { Storage, TimelineStartJobClaim } from "./types";
 
 export const memory = {
   replays: new Map<string, GameReplay>(),
@@ -36,15 +37,33 @@ export class MemoryStorage implements Storage {
   }
 
   async saveTimelineStartJob(job: TimelineStartJob): Promise<TimelineStartJob> {
-    memory.timelineStartJobs.set(job.id, job);
-    return job;
+    const normalized = normalizeTimelineStartJob(job);
+    memory.timelineStartJobs.set(job.id, normalized);
+    return normalized;
   }
 
   async getTimelineStartJob(id: string, workspaceId?: string): Promise<TimelineStartJob | null> {
     const job = memory.timelineStartJobs.get(id);
     if (!job) return null;
     if (workspaceId && job.workspaceId !== workspaceId) return null;
-    return job;
+    return normalizeTimelineStartJob(job);
+  }
+
+  async claimTimelineStartJob(claim: TimelineStartJobClaim): Promise<TimelineStartJob | null> {
+    const job = memory.timelineStartJobs.get(claim.id);
+    if (!job) return null;
+    const claimed = claimTimelineStartJobState(job, claim);
+    if (!claimed) return null;
+    memory.timelineStartJobs.set(claim.id, claimed);
+    return claimed;
+  }
+
+  async updateClaimedTimelineStartJob(job: TimelineStartJob, leaseToken: string): Promise<TimelineStartJob | null> {
+    const current = memory.timelineStartJobs.get(job.id);
+    if (!current || current.status !== "running" || current.leaseToken !== leaseToken) return null;
+    const normalized = normalizeTimelineStartJob(job);
+    memory.timelineStartJobs.set(job.id, normalized);
+    return normalized;
   }
 
   async savePredictionRun(run: { timelineId: string; pitchMoment: number; request: PredictionRequest; response: PredictionResponse }): Promise<void> {

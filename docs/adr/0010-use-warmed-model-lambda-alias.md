@@ -23,7 +23,8 @@ Production deploys publish the model Lambda to a `live` alias, configure
 alias. The model Lambda uses a longer timeout and larger memory allocation for
 the warmup path so model download/load work happens during deployment instead
 of during the user's first replay request. The web stack invokes the alias
-target `pitch-sequence-model-lambda:live` rather than unqualified `$LATEST`.
+target rather than unqualified `$LATEST`. After ADR 0012, the default
+serverless-native target is `pitch-sequence-serverless-model-lambda:live`.
 
 The public deployment keeps one provisioned model environment for the normal
 single-user path and caps model reserved concurrency at two. That preserves a
@@ -61,8 +62,9 @@ async start state or receive a retryable model-busy response on later
 same-replay predictions.
 
 Future deploys must update the model alias before the web stack points traffic
-at it. `scripts/deploy-model-lambda.sh` owns that operation in local deploys and
-the GitHub deploy workflow.
+at it. `scripts/deploy-serverless-model.sh` owns the serverless-native model
+stack deploy path. `scripts/deploy-model-lambda.sh` remains a direct Lambda
+update helper for the serverless model function after the stack exists.
 
 ## Verification
 

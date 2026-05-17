@@ -9,6 +9,7 @@ import { HttpError, notFound, serviceUnavailable, unauthorized } from "./http";
 
 const lambdaClient = new LambdaClient({});
 const staleRunningJobMs = 6 * 60 * 1000;
+const timelineStartJobLeaseMs = 6 * 60 * 1000;
 
 export type TimelineStartJobResult = {
   job: TimelineStartJob;
@@ -25,6 +26,8 @@ export async function createTimelineStartJob(workspaceId: string, gamePk: string
     timelineId: null,
     error: null,
     attempts: 0,
+    leaseToken: null,
+    leaseExpiresAt: null,
     createdAt: now,
     updatedAt: now,
     startedAt: null,
@@ -51,28 +54,32 @@ export async function createTimelineStartJob(workspaceId: string, gamePk: string
 }
 
 export async function loadTimelineStartJobResult(id: string, workspaceId: string): Promise<TimelineStartJobResult> {
-  const job = await getStorage().getTimelineStartJob(id, workspaceId);
+  const storage = getStorage();
+  const job = await storage.getTimelineStartJob(id, workspaceId);
   if (!job) throw notFound("Timeline start job not found.", "timeline_start_job_not_found");
+  if (job.status === "running" && isExpiredRunningJobLease(job)) {
+    await dispatchTimelineStartJob(job.id);
+    await storage.audit({
+      workspaceId: job.workspaceId,
+      action: "timeline_start_job.redispatched",
+      payload: { jobId: job.id, gamePk: job.gamePk, attempts: job.attempts }
+    });
+  }
   if (job.status !== "succeeded" || !job.timelineId) return { job };
   return { job, timeline: await loadTimeline(job.timelineId, workspaceId) };
 }
 
 export async function processTimelineStartJob(id: string): Promise<TimelineStartJob> {
   const storage = getStorage();
-  const existing = await storage.getTimelineStartJob(id);
-  if (!existing) throw notFound("Timeline start job not found.", "timeline_start_job_not_found");
-  if (existing.status === "succeeded" || existing.status === "failed") return existing;
-  if (existing.status === "running" && !isStaleRunningJob(existing)) return existing;
+  const claim = timelineStartJobClaim(id);
+  const claimed = await storage.claimTimelineStartJob(claim);
+  if (!claimed) {
+    const existing = await storage.getTimelineStartJob(id);
+    if (!existing) throw notFound("Timeline start job not found.", "timeline_start_job_not_found");
+    return existing;
+  }
 
-  let job: TimelineStartJob = {
-    ...existing,
-    status: "running",
-    error: null,
-    attempts: existing.attempts + 1,
-    startedAt: existing.startedAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  await storage.saveTimelineStartJob(job);
+  let job: TimelineStartJob = claimed;
   await storage.audit({
     workspaceId: job.workspaceId,
     action: "timeline_start_job.running",
@@ -90,10 +97,14 @@ export async function processTimelineStartJob(id: string): Promise<TimelineStart
       ...job,
       status: "succeeded",
       timelineId: timeline.id,
+      leaseToken: null,
+      leaseExpiresAt: null,
       completedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    await storage.saveTimelineStartJob(job);
+    const saved = await storage.updateClaimedTimelineStartJob(job, claim.leaseToken);
+    if (!saved) return await loadCurrentTimelineStartJob(job.id, job);
+    job = saved;
     await storage.audit({
       workspaceId: job.workspaceId,
       timelineId: timeline.id,
@@ -103,13 +114,14 @@ export async function processTimelineStartJob(id: string): Promise<TimelineStart
     return job;
   } catch (error) {
     const failed = failJob(job, serializeJobError(error));
-    await storage.saveTimelineStartJob(failed);
+    const saved = await storage.updateClaimedTimelineStartJob(failed, claim.leaseToken);
+    if (!saved) return await loadCurrentTimelineStartJob(job.id, failed);
     await storage.audit({
-      workspaceId: failed.workspaceId,
+      workspaceId: saved.workspaceId,
       action: "timeline_start_job.failed",
-      payload: { jobId: failed.id, gamePk: failed.gamePk, error: failed.error }
+      payload: { jobId: saved.id, gamePk: saved.gamePk, error: saved.error }
     });
-    return failed;
+    return saved;
   }
 }
 
@@ -125,9 +137,26 @@ function failJob(job: TimelineStartJob, error: TimelineStartJobError): TimelineS
     ...job,
     status: "failed",
     error,
+    leaseToken: null,
+    leaseExpiresAt: null,
     completedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+}
+
+function timelineStartJobClaim(id: string) {
+  const nowMs = Date.now();
+  return {
+    id,
+    now: new Date(nowMs).toISOString(),
+    leaseToken: crypto.randomUUID(),
+    leaseExpiresAt: new Date(nowMs + timelineStartJobLeaseMs).toISOString(),
+    legacyRunningUpdatedBefore: new Date(nowMs - staleRunningJobMs).toISOString()
+  };
+}
+
+async function loadCurrentTimelineStartJob(id: string, fallback: TimelineStartJob): Promise<TimelineStartJob> {
+  return await getStorage().getTimelineStartJob(id) ?? fallback;
 }
 
 async function dispatchTimelineStartJob(jobId: string) {
@@ -207,7 +236,9 @@ function serializeJobError(error: unknown): TimelineStartJobError {
   return { message: String(error), code: "timeline_start_failed" };
 }
 
-function isStaleRunningJob(job: TimelineStartJob) {
+function isExpiredRunningJobLease(job: TimelineStartJob) {
+  const leaseExpiresAt = job.leaseExpiresAt ? Date.parse(job.leaseExpiresAt) : Number.NaN;
+  if (!Number.isNaN(leaseExpiresAt)) return Date.now() >= leaseExpiresAt;
   const updatedAt = Date.parse(job.updatedAt);
   return Number.isNaN(updatedAt) || Date.now() - updatedAt > staleRunningJobMs;
 }

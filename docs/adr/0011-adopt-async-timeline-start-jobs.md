@@ -25,6 +25,12 @@ When the first prediction exists, the job moves to `succeeded` and the browser
 opens the normal replay cockpit. If the model cannot finish, the job moves to
 `failed` with a stable error code and user-visible retry message.
 
+Workers must claim a job through a conditional storage transition before calling
+the model. A running job carries an internal lease token and expiry; completion
+or failure is accepted only from the current lease owner. Polling reads may
+re-dispatch expired running leases so a worker timeout or process crash does not
+leave the browser waiting forever.
+
 The deployed serverless stack keeps CloudFront request behavior short for public
 requests, increases only the web Lambda timeout for the internal worker path,
 and grants the web Lambda permission to invoke itself asynchronously. Timeline
@@ -63,6 +69,9 @@ The app now has a small asynchronous API surface:
 The internal run route must remain header-protected and must not create user
 sessions. Product verification needs to poll job completion instead of assuming
 timeline creation is synchronous.
+
+The older synchronous `POST /api/timelines` creation route is intentionally
+retired and returns `410 Gone`; public callers must use the async job API.
 
 Later pitch advancement still invokes the model synchronously. That is acceptable
 because the first start normally warms the model environment for the session, but

@@ -112,6 +112,8 @@ export const timelineStartJobs = pgTable(
     gamePk: text("game_pk").notNull(),
     status: text("status").notNull(),
     timelineId: text("timeline_id"),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     payload: jsonb("payload").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull()

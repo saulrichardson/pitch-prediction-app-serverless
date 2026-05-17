@@ -106,6 +106,7 @@ The canonical demo is a cost-conscious AWS serverless deployment:
 - frontend and API: Next.js App Router, React, TypeScript, and Next.js API routes
 - web runtime: Next.js standalone server running in AWS Lambda through Lambda Web Adapter
 - model runtime: separate Python/FastAPI model service deployed as an AWS Lambda container
+- model ownership: dedicated `PitchSequenceModelStack` with a warmed `live` alias
 - state: DynamoDB for deployed demo storage
 - secrets: AWS Secrets Manager
 - packaging: Amazon ECR container images
@@ -165,6 +166,9 @@ Read these first:
 - [`docs/adr/0008-adopt-serverless-web-architecture.md`](docs/adr/0008-adopt-serverless-web-architecture.md)
   explains the serverless AWS architecture and why it replaced the earlier
   standing App Runner/RDS approach for the canonical demo.
+- [`docs/adr/0012-adopt-serverless-model-stack.md`](docs/adr/0012-adopt-serverless-model-stack.md)
+  explains the final model ownership transition that makes App Runner only a
+  temporary redirect during shutdown.
 - [`docs/contracts/model-service.md`](docs/contracts/model-service.md) defines
   the boundary between product state and model inference.
 - [`docs/contracts/state-machines.md`](docs/contracts/state-machines.md) defines

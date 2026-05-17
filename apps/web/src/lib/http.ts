@@ -36,6 +36,10 @@ export function conflict(message: string, code = "conflict") {
   return new HttpError(409, message, code);
 }
 
+export function gone(message: string, code = "gone") {
+  return NextResponse.json({ error: message, code }, { status: 410 });
+}
+
 export function serviceUnavailable(message: string, code = "service_unavailable") {
   return new HttpError(503, message, code);
 }

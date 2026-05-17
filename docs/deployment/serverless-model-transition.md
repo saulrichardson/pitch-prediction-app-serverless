@@ -20,10 +20,11 @@ remain alive only as a redirect to the serverless version.
    scripts/deploy-serverless-model.sh
    ```
 
-2. Deploy the serverless web stack with the default model target:
+2. Build the serverless web Lambda image and deploy the serverless web stack
+   with the default model target:
 
    ```bash
-   npm --workspace @pitch/infra run deploy:serverless
+   scripts/deploy-serverless-web.sh
    ```
 
    The default target is:
@@ -36,7 +37,7 @@ remain alive only as a redirect to the serverless version.
 
    ```bash
    MODEL_LAMBDA_INVOKE_TARGET=pitch-sequence-model-lambda:live \
-     npm --workspace @pitch/infra run deploy:serverless
+     scripts/deploy-serverless-web.sh
    ```
 
 3. Verify the deployed serverless product:

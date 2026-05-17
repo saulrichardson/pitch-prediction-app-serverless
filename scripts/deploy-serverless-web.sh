@@ -8,7 +8,10 @@ export AWS_REGION AWS_DEFAULT_REGION
 ECR_REPOSITORY_NAME="${ECR_REPOSITORY_NAME:-pitch-prediction-app}"
 SERVERLESS_WEB_IMAGE_TAG="${SERVERLESS_WEB_IMAGE_TAG:-serverless-$(git rev-parse --short=12 HEAD)}"
 SERVERLESS_WEB_LATEST_TAG="${SERVERLESS_WEB_LATEST_TAG:-serverless-latest}"
+CUSTOM_DOMAIN_NAME="${CUSTOM_DOMAIN_NAME:-baseball.saulrichardson.io}"
+ACM_CERTIFICATE_ARN="${ACM_CERTIFICATE_ARN:-arn:aws:acm:us-east-1:492205018164:certificate/62136baf-0216-4c9a-acbc-7e6e1694b0f0}"
 export ECR_REPOSITORY_NAME SERVERLESS_WEB_IMAGE_TAG
+export CUSTOM_DOMAIN_NAME ACM_CERTIFICATE_ARN
 
 account_id="$(aws sts get-caller-identity --query Account --output text)"
 registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"

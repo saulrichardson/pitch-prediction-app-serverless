@@ -33,6 +33,10 @@ remain alive only as a redirect to the serverless version.
    pitch-sequence-serverless-model-lambda:live
    ```
 
+   The script also preserves the production custom domain configuration from
+   `docs/deployment/custom-domain.md` unless `CUSTOM_DOMAIN_NAME` and
+   `ACM_CERTIFICATE_ARN` are explicitly overridden.
+
    During rollback, override it with:
 
    ```bash
